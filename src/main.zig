@@ -5,16 +5,19 @@ const clipboard_buffer_size: usize = @as(usize, r4os.clipboard.max_text_bytes) +
 const DiagApi = struct {
     sys: r4os.r4sys.Context,
     desk: r4os.r4desk.Context,
+    clock: r4os.rpc_budget.Clock,
 
-    fn init(r4_app: *r4os.App) ?DiagApi {
+    fn init(r4_app: *r4os.App2) ?DiagApi {
+        const clock = r4_app.clock() catch return null;
         return .{
             .sys = r4_app.system(),
             .desk = r4_app.desktop() orelse return null,
+            .clock = clock.read,
         };
     }
 };
 
-pub fn r4_app_main(r4_app: *r4os.App) i32 {
+pub fn r4_app_main(r4_app: *r4os.App2) i32 {
     var ctx = DiagApi.init(r4_app) orelse return r4os.abi.err_no_group;
     ctx.sys.println("CLIPD");
 
@@ -69,8 +72,68 @@ pub fn r4_app_main(r4_app: *r4os.App) i32 {
     if (!clipsvcInfo(&ctx, service_handle, &service_info) or service_info.length != 0) return fail(&ctx, "service final clear mismatch");
     _ = ctx.sys.serviceClose(service_handle);
 
+    if (!checkOffers(r4_app, &ctx)) return fail(&ctx, "copied offer ownership");
+    if (ctx.desk.clipboardClear() != 0) return fail(&ctx, "offer cleanup clear");
     ctx.sys.println("CLIPD OK");
     return 0;
+}
+
+fn checkOffers(app: *r4os.App2, ctx: *const DiagApi) bool {
+    const offer = r4os.clipboard_offer;
+    var client: offer.Client = undefined;
+    if (app.clipboardOffers(&client) != 0) return false;
+    defer if (client.handle != 0) {
+        _ = client.close();
+    };
+    var current: offer.Info = undefined;
+    if (client.info(&current) != 0) return false;
+    const text = "R4OS copied offer\r\nUTF8: \xc3\xa4";
+    const format = r4os.abi.clipboard_offer_format_text_utf8;
+    var stage: offer.Lease = undefined;
+    if (client.begin(current, text.len, &stage) != 0) return false;
+    var stage_owned = true;
+    defer if (stage_owned) {
+        // A failed mutating call can have committed already. Inspect the
+        // exact token before choosing abort versus receipt release.
+        var actual: offer.Lease = undefined;
+        if (client.status(stage, &actual) == 0) {
+            if (actual.state == r4os.abi.clipboard_offer_state_committed) {
+                _ = client.release(actual);
+            } else {
+                _ = client.abort(stage);
+            }
+        }
+    };
+    if (client.declare(stage, 0, format, text.len) != 0 or
+        client.put(stage, 0, format, 0, text.len, text) != 0) return false;
+    var receipt: offer.Lease = undefined;
+    if (client.commit(stage, &receipt) != 0 or receipt.revision == current.revision) return false;
+    var snapshot: offer.Lease = undefined;
+    if (client.snapshot(&snapshot) != 0) return false;
+    var snapshot_owned = true;
+    defer if (snapshot_owned) {
+        _ = client.release(snapshot);
+    };
+    if (snapshot.provider != receipt.provider or snapshot.revision != receipt.revision) return false;
+    var formats: [1]offer.Format = undefined;
+    var page: offer.Page = undefined;
+    if (client.enumerate(snapshot, 0, &formats, &page) != 0 or page.count != 1 or page.total != 1 or
+        formats[0].item != 0 or formats[0].format != format or formats[0].total_bytes != text.len) return false;
+    var bytes: [64]u8 = undefined;
+    var chunk: offer.Chunk = undefined;
+    if (client.read(snapshot, 0, format, 0, &bytes, &chunk) != 0 or chunk.bytes != text.len or
+        chunk.total_bytes != text.len or chunk.flags != r4os.abi.clipboard_offer_flag_eof or
+        !equalBytes(bytes[0..text.len], text)) return false;
+    // The old text view must reflect the same complete committed offer.
+    if (ctx.desk.clipboardRead(&bytes) != text.len or !equalBytes(bytes[0..text.len], text)) return false;
+    if (client.release(snapshot) != 0) return false;
+    snapshot_owned = false;
+    if (client.read(snapshot, 0, format, 0, &bytes, &chunk) != r4os.abi.clipboard_offer_error_closed) return false;
+    if (client.release(receipt) != 0) return false;
+    stage_owned = false;
+    if (client.close() != 0) return false;
+    ctx.sys.println("CLIPD copied offer: commit/snapshot/format/UTF8/release OK");
+    return true;
 }
 
 fn fail(ctx: *const DiagApi, reason: []const u8) i32 {
@@ -90,14 +153,14 @@ fn equalBytes(a: []const u8, b: []const u8) bool {
 }
 
 fn waitClipsvc(ctx: *const DiagApi) ?u32 {
-    var tick: u32 = 0;
-    while (tick < 160) : (tick += 1) {
+    var budget = r4os.rpc_budget.Budget.fromTicks(ctx.clock, 160) catch return null;
+    while (true) {
+        _ = budget.remainingTicks() catch return null;
         var service_info = r4os.abi.ServiceInfo{};
         const rc = ctx.sys.serviceOpen("CLIPSVC", &service_info);
         if (rc == r4os.abi.service_api_result_ok and service_info.handle != 0) return service_info.handle;
         ctx.sys.sleepTicks(1);
     }
-    return null;
 }
 
 fn clipsvcInfo(ctx: *const DiagApi, handle: u32, out: *r4os.abi.ClipboardInfo) bool {

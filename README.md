@@ -4,7 +4,7 @@
 
 ## Package
 
-- Version: `0.1.2`
+- Version: `0.1.5`
 - Image target: `/R4OS/SOFTWARE/TERMINAL/DIAG/CLIPD.R4X`
 - Image scope: `test`
 - Canonical project manifest: `module.R4MF`
@@ -38,3 +38,7 @@ Detailed German technical notes from the migration are preserved in
 Original R4OS material is licensed under Apache License 2.0. See `LICENSE`
 and `NOTICE`. Any repository-specific external material is documented in
 `THIRD_PARTY_NOTICES.md`.
+
+## Generation 2
+
+The normal Start2/Query2 diagnostic keeps the original text/wire assertions and additionally checks UTF8 copied offers: begin, declare, put, commit, snapshot, enumerate, exact read, release and rejection of the released snapshot. Readiness uses the shared monotonic budget.

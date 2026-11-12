@@ -1,25 +1,16 @@
 ﻿CLIPD.R4X
 =========
 
-CLIPD.R4X ist die Clipboard- und Desktop-Service-Diagnose.
+Stand0.90.81 / Modul 0.1.5
 
-Projektstruktur seit 0.51.21:
-- `build.zig` baut die Diagnose als eigenes SDK-Projekt.
-- `build.zig.zon` bindet `r4os_sdk` als Paket.
-- `module.R4MF` beschreibt Artefakt, Zielpfad, R4L-Imports und Contract.
+Clipboard-Texttransport sowie kopierte UTF8-Angebote mit Commit, Snapshot und echter Freigabe.
 
-Build:
-
-    cd Code\System\Diagnostics\ClipboardDiag
-    ..\..\..\DevTools\Zig\zig.exe build
-
-Ergebnis:
-
-    Code\System\Diagnostics\ClipboardDiag\zig-out\CLIPD.R4X
-
-Contract:
-- Build-Profil: `Zig/R4XStart`
-- R4XStart-Entry: `clipd_main`
-- App-Klasse: `console`
-- R4L-Imports: `R4SYS`, `R4DESK`
-- Zielpfad im Image: `C:\R4OS\SOFTWARE\TERMINAL\DIAG\CLIPD.R4X`
+Build vom Workspace-Root:
+    ./Repositories/Diagnostics/ClipboardDiag/Build.sh
+Unter Windows den entsprechenden Build.bat-Starter verwenden.
+Die gemeinsame PowerShell7-Logik waehlt die lokalen SDK-/Contract-Besitzer.
+Artefakt: Artifacts/Modules/ClipboardDiag/CLIPD.R4X
+Manifest: Repositories/Diagnostics/ClipboardDiag/module.R4MF
+SDK-Profil: r4os-zig-generation2; r4_app_main mit echtem App2-Kontext.
+Container-Export: R4XStart2:2; Platform-Imports: R4SYS:Query2:2, R4DESK:Query2:2.
+Aktuelle Fachfaelle und Grenzen: README.md.
